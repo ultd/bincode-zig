@@ -4,6 +4,45 @@ const testing = std.testing;
 
 const bincode = @This();
 
+pub const SerializeFunction = fn (writer: anytype, data: anytype, params: bincode.Params) anyerror!void;
+pub const DeserializeFunction = fn (gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: bincode.Params) anyerror!void;
+
+pub const FieldOption = struct {
+    name: []const u8,
+    serializer: ?SerializeFunction = null,
+    deserializer: ?DeserializeFunction = null,
+};
+
+pub fn Options(comptime options: []const FieldOption) type {
+    return struct {
+        field_options: [options.len]FieldOption = options[0..options.len].*,
+
+        const Self = @This();
+
+        pub fn getFieldSerializer(comptime self: Self, comptime field: []const u8) ?SerializeFunction {
+            for (self.field_options) |field_opt| {
+                if (std.mem.eql(u8, field_opt.name, field)) {
+                    if (field_opt.serializer) |serializer| {
+                        return serializer;
+                    }
+                }
+            }
+            return null;
+        }
+
+        pub fn getFieldDeserializer(comptime self: Self, comptime field: []const u8) ?DeserializeFunction {
+            for (self.field_options) |field_opt| {
+                if (std.mem.eql(u8, field_opt.name, field)) {
+                    if (field_opt.deserializer) |deserializer| {
+                        return deserializer;
+                    }
+                }
+            }
+            return null;
+        }
+    };
+}
+
 pub const Params = struct {
     pub const legacy: Params = .{
         .endian = .Little,
@@ -111,6 +150,12 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
             var data: U = undefined;
             inline for (info.fields) |field| {
                 if (!field.is_comptime) {
+                    if (@hasDecl(T, "!bincode-options")) {
+                        if (T.@"!bincode-options".getFieldDeserializer(field.name)) |deserializer| {
+                            @field(data, field.name) = try deserializer(gpa, field.type, reader, params);
+                            continue;
+                        }
+                    }
                     @field(data, field.name) = try bincode.read(gpa, field.type, reader, params);
                 }
             }
@@ -131,7 +176,7 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
                     return error.UnexpectedFixedArrayLen;
                 }
             }
-            for (data) |*element| {
+            for (&data) |*element| {
                 element.* = try bincode.read(gpa, info.child, reader, params);
             }
             return data;
@@ -202,12 +247,12 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
                             .Big => reader.readIntBig(u16),
                         };
                         return switch (info.signedness) {
-                            .unsigned => std.math.cast(U, z) orelse error.FailedToCastZZ,
+                            .unsigned => std.math.cast(U, z) orelse return error.FailedToCastZZ,
                             .signed => zigzag: {
                                 if (z % 2 == 0) {
-                                    break :zigzag std.math.cast(U, z / 2) orelse error.FailedToCastZZ;
+                                    break :zigzag std.math.cast(U, z / 2) orelse return error.FailedToCastZZ;
                                 } else {
-                                    break :zigzag ~(std.math.cast(U, z / 2) orelse error.FailedToCastZZ);
+                                    break :zigzag ~(std.math.cast(U, z / 2) orelse return error.FailedToCastZZ);
                                 }
                             },
                         };
@@ -217,12 +262,12 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
                             .Big => reader.readIntBig(u32),
                         };
                         return switch (info.signedness) {
-                            .unsigned => std.math.cast(U, z) orelse error.FailedToCastZZ,
+                            .unsigned => std.math.cast(U, z) orelse return error.FailedToCastZZ,
                             .signed => zigzag: {
                                 if (z % 2 == 0) {
-                                    break :zigzag std.math.cast(U, z / 2) orelse error.FailedToCastZZ;
+                                    break :zigzag std.math.cast(U, z / 2) orelse return error.FailedToCastZZ;
                                 } else {
-                                    break :zigzag ~(std.math.cast(U, z / 2) orelse error.FailedToCastZZ);
+                                    break :zigzag ~(std.math.cast(U, z / 2) orelse return error.FailedToCastZZ);
                                 }
                             },
                         };
@@ -232,12 +277,12 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
                             .Big => reader.readIntBig(u64),
                         };
                         return switch (info.signedness) {
-                            .unsigned => std.math.cast(U, z) orelse error.FailedToCastZZ,
+                            .unsigned => std.math.cast(U, z) orelse return error.FailedToCastZZ,
                             .signed => zigzag: {
                                 if (z % 2 == 0) {
-                                    break :zigzag std.math.cast(U, z / 2) orelse error.FailedToCastZZ;
+                                    break :zigzag std.math.cast(U, z / 2) orelse return error.FailedToCastZZ;
                                 } else {
-                                    break :zigzag ~(std.math.cast(U, z / 2) orelse error.FailedToCastZZ);
+                                    break :zigzag ~(std.math.cast(U, z / 2) orelse return error.FailedToCastZZ);
                                 }
                             },
                         };
@@ -247,12 +292,12 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
                             .Big => reader.readIntBig(u128),
                         };
                         return switch (info.signedness) {
-                            .unsigned => std.math.cast(U, z) orelse error.FailedToCastZZ,
+                            .unsigned => std.math.cast(U, z) orelse return error.FailedToCastZZ,
                             .signed => zigzag: {
                                 if (z % 2 == 0) {
-                                    break :zigzag std.math.cast(U, z / 2) orelse error.FailedToCastZZ;
+                                    break :zigzag std.math.cast(U, z / 2) orelse return error.FailedToCastZZ;
                                 } else {
-                                    break :zigzag ~(std.math.cast(U, z / 2) orelse error.FailedToCastZZ);
+                                    break :zigzag ~(std.math.cast(U, z / 2) orelse return error.FailedToCastZZ);
                                 }
                             },
                         };
@@ -262,12 +307,12 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
                             .Big => reader.readIntBig(u256),
                         };
                         return switch (info.signedness) {
-                            .unsigned => std.math.cast(U, z) orelse error.FailedToCastZZ,
+                            .unsigned => std.math.cast(U, z) orelse return error.FailedToCastZZ,
                             .signed => zigzag: {
                                 if (z % 2 == 0) {
-                                    break :zigzag std.math.cast(U, z / 2) orelse error.FailedToCastZZ;
+                                    break :zigzag std.math.cast(U, z / 2) orelse return error.FailedToCastZZ;
                                 } else {
-                                    break :zigzag ~(std.math.cast(U, z / 2) orelse error.FailedToCastZZ);
+                                    break :zigzag ~(std.math.cast(U, z / 2) orelse return error.FailedToCastZZ);
                                 }
                             },
                         };
@@ -353,7 +398,15 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
             inline for (info.fields) |field| {
                 if (!field.is_comptime) {
                     if (@as(?anyerror!void, maybe_err catch null) != null) {
-                        maybe_err = bincode.write(writer, @field(data, field.name), params);
+                        if (@hasDecl(T, "!bincode-options")) {
+                            if (T.@"!bincode-options".getFieldSerializer(field.name)) |serializer| {
+                                maybe_err = serializer(writer, @field(data, field.name), params);
+                            } else {
+                                maybe_err = bincode.write(writer, @field(data, field.name), params);
+                            }
+                        } else {
+                            maybe_err = bincode.write(writer, @field(data, field.name), params);
+                        }
                     }
                 }
             }
