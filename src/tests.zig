@@ -59,14 +59,10 @@ const Entity = struct {
         return writer.print("{s} - {}", .{ self.version, self.ip });
     }
 
-    // how we declare options for bincode - using !bincode-options as this is extremely unlikey to clash
-    pub const @"!bincode-options" = bincode.Options(&[_]bincode.FieldOption{
-        .{
-            .name = "ip",
-            .serializer = serializeForIpv4,
-            .deserializer = deserializeForIpv4,
-        },
-    }){};
+    pub const @"!bincode-config:id" = bincode.FieldConfig{
+        .serializer = serializeForIpv4,
+        .deserializer = deserializeForIpv4,
+    };
 };
 
 test "custom serializer" {
@@ -129,4 +125,47 @@ test "non-custom serializer" {
     try testing.expect(entity.b == other_entity.b);
     try testing.expect(entity.c.d == other_entity.c.d);
     try testing.expect(entity.c.e == other_entity.c.e);
+}
+
+const C = struct { d: bool, e: f32 };
+
+const ASkipStruct = struct {
+    a: u32,
+    b: bool,
+    c: C = .{ .d = true, .e = 4.4 },
+
+    pub const @"!bincode-config:c" = bincode.FieldConfig{ .skip = true };
+};
+
+test "skip a field" {
+    testing.log_level = .debug;
+
+    var entity = ASkipStruct{
+        .a = 4,
+        .b = true,
+        .c = .{
+            .d = false,
+            .e = 3.14,
+        },
+    };
+
+    std.log.debug("original {any}", .{entity});
+
+    var buf = std.ArrayList(u8).init(testing.allocator);
+    defer buf.deinit();
+
+    try bincode.write(buf.writer(), entity, bincode.Params.standard);
+
+    std.log.debug("serialized: {any}", .{buf.items});
+
+    var stream = std.io.fixedBufferStream(buf.items);
+    var other_entity = try bincode.read(testing.allocator, ASkipStruct, stream.reader(), bincode.Params.standard);
+    defer bincode.readFree(testing.allocator, other_entity);
+
+    std.log.debug("deserialized: {any}", .{other_entity});
+
+    try testing.expect(entity.a == other_entity.a);
+    try testing.expect(entity.b == other_entity.b);
+    try testing.expect(true == other_entity.c.d);
+    try testing.expect(4.4 == other_entity.c.e);
 }

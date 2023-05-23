@@ -1,46 +1,58 @@
 const std = @import("std");
-
 const testing = std.testing;
-
 const bincode = @This();
 
 pub const SerializeFunction = fn (writer: anytype, data: anytype, params: bincode.Params) anyerror!void;
 pub const DeserializeFunction = fn (gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: bincode.Params) anyerror!void;
 
-pub const FieldOption = struct {
-    name: []const u8,
+pub const FieldConfig = struct {
     serializer: ?SerializeFunction = null,
     deserializer: ?DeserializeFunction = null,
+    skip: bool = false,
 };
 
-pub fn Options(comptime options: []const FieldOption) type {
-    return struct {
-        field_options: [options.len]FieldOption = options[0..options.len].*,
+pub fn getFieldSerializer(comptime parent_type: type, comptime struct_field: std.builtin.Type.StructField) ?SerializeFunction {
+    if (@hasDecl(parent_type, "!bincode-config:" ++ struct_field.name)) {
+        const config = @field(parent_type, "!bincode-config:" ++ struct_field.name);
+        return config.serializer;
+    }
+    return null;
+}
 
-        const Self = @This();
+pub fn getFieldDeserializer(comptime parent_type: type, comptime struct_field: std.builtin.Type.StructField) ?DeserializeFunction {
+    if (@hasDecl(parent_type, "!bincode-config:" ++ struct_field.name)) {
+        const config = @field(parent_type, "!bincode-config:" ++ struct_field.name);
+        return config.deserializer;
+    }
+    return null;
+}
 
-        pub fn getFieldSerializer(comptime self: Self, comptime field: []const u8) ?SerializeFunction {
-            for (self.field_options) |field_opt| {
-                if (std.mem.eql(u8, field_opt.name, field)) {
-                    if (field_opt.serializer) |serializer| {
-                        return serializer;
-                    }
-                }
-            }
-            return null;
+pub inline fn shouldSkipSerializedField(comptime parent_type: type, comptime struct_field: std.builtin.Type.StructField) bool {
+    const parent_type_name = @typeName(parent_type);
+
+    if (@hasDecl(parent_type, "!bincode-config:" ++ struct_field.name)) {
+        const config = @field(parent_type, "!bincode-config:" ++ struct_field.name);
+        if (config.skip and struct_field.default_value == null) {
+            @compileError("┓\n|\n|--> Invalid config: cannot skip field '" ++ parent_type_name ++ "." ++ struct_field.name ++ "' serialization if no default value set\n\n");
         }
+        return config.skip;
+    }
 
-        pub fn getFieldDeserializer(comptime self: Self, comptime field: []const u8) ?DeserializeFunction {
-            for (self.field_options) |field_opt| {
-                if (std.mem.eql(u8, field_opt.name, field)) {
-                    if (field_opt.deserializer) |deserializer| {
-                        return deserializer;
-                    }
-                }
-            }
-            return null;
+    return false;
+}
+
+pub inline fn shouldUseDefaultValue(comptime parent_type: type, comptime struct_field: std.builtin.Type.StructField) ?*const anyopaque {
+    const parent_type_name = @typeName(parent_type);
+
+    if (@hasDecl(parent_type, "!bincode-config:" ++ struct_field.name)) {
+        const config = @field(parent_type, "!bincode-config:" ++ struct_field.name);
+        if (config.skip and struct_field.default_value == null) {
+            @compileError("┓\n|\n|--> Invalid config: cannot skip field '" ++ parent_type_name ++ "." ++ struct_field.name ++ "' deserialization if no default value set\n\n");
         }
-    };
+        return struct_field.default_value;
+    }
+
+    return null;
 }
 
 pub const Params = struct {
@@ -150,13 +162,13 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
             var data: U = undefined;
             inline for (info.fields) |field| {
                 if (!field.is_comptime) {
-                    if (@hasDecl(T, "!bincode-options")) {
-                        if (T.@"!bincode-options".getFieldDeserializer(field.name)) |deserializer| {
-                            @field(data, field.name) = try deserializer(gpa, field.type, reader, params);
-                            continue;
-                        }
+                    if (shouldUseDefaultValue(U, field)) |val| {
+                        @field(data, field.name) = @ptrCast(*const field.type, @alignCast(@alignOf(field.type), val)).*;
+                    } else if (getFieldDeserializer(U, field)) |deserializer| {
+                        @field(data, field.name) = try deserializer(gpa, field.type, reader, params);
+                    } else {
+                        @field(data, field.name) = try bincode.read(gpa, field.type, reader, params);
                     }
-                    @field(data, field.name) = try bincode.read(gpa, field.type, reader, params);
                 }
             }
             return data;
@@ -398,14 +410,12 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
             inline for (info.fields) |field| {
                 if (!field.is_comptime) {
                     if (@as(?anyerror!void, maybe_err catch null) != null) {
-                        if (@hasDecl(T, "!bincode-options")) {
-                            if (T.@"!bincode-options".getFieldSerializer(field.name)) |serializer| {
+                        if (!shouldSkipSerializedField(T, field)) {
+                            if (getFieldSerializer(T, field)) |serializer| {
                                 maybe_err = serializer(writer, @field(data, field.name), params);
                             } else {
                                 maybe_err = bincode.write(writer, @field(data, field.name), params);
                             }
-                        } else {
-                            maybe_err = bincode.write(writer, @field(data, field.name), params);
                         }
                     }
                 }
