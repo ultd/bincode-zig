@@ -11,6 +11,27 @@ pub const FieldConfig = struct {
     skip: bool = false,
 };
 
+pub const StructConfig = struct {
+    serializer: ?SerializeFunction = null,
+    deserializer: ?DeserializeFunction = null,
+};
+
+pub fn getStructSerializer(comptime parent_type: type) ?SerializeFunction {
+    if (@hasDecl(parent_type, "!bincode-config")) {
+        const config = @field(parent_type, "!bincode-config");
+        return config.serializer;
+    }
+    return null;
+}
+
+pub fn getStructDeserializer(comptime parent_type: type) ?DeserializeFunction {
+    if (@hasDecl(parent_type, "!bincode-config")) {
+        const config = @field(parent_type, "!bincode-config");
+        return config.deserializer;
+    }
+    return null;
+}
+
 pub fn getFieldSerializer(comptime parent_type: type, comptime struct_field: std.builtin.Type.StructField) ?SerializeFunction {
     if (@hasDecl(parent_type, "!bincode-config:" ++ struct_field.name)) {
         const config = @field(parent_type, "!bincode-config:" ++ struct_field.name);
@@ -27,7 +48,7 @@ pub fn getFieldDeserializer(comptime parent_type: type, comptime struct_field: s
     return null;
 }
 
-pub inline fn shouldSkipSerializedField(comptime parent_type: type, comptime struct_field: std.builtin.Type.StructField) bool {
+pub inline fn shouldSkipSerializingField(comptime parent_type: type, comptime struct_field: std.builtin.Type.StructField) bool {
     const parent_type_name = @typeName(parent_type);
 
     if (@hasDecl(parent_type, "!bincode-config:" ++ struct_field.name)) {
@@ -160,6 +181,11 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
         },
         .Struct => |info| {
             var data: U = undefined;
+            if (getStructDeserializer(U)) |deserializer| {
+                data = try deserializer(gpa, U, reader, params);
+                return data;
+            }
+
             inline for (info.fields) |field| {
                 if (!field.is_comptime) {
                     if (shouldUseDefaultValue(U, field)) |val| {
@@ -406,11 +432,14 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
             return;
         },
         .Struct => |info| {
+            if (getStructSerializer(T)) |serializer| {
+                return serializer(writer, data, params);
+            }
             var maybe_err: anyerror!void = {};
             inline for (info.fields) |field| {
                 if (!field.is_comptime) {
                     if (@as(?anyerror!void, maybe_err catch null) != null) {
-                        if (!shouldSkipSerializedField(T, field)) {
+                        if (!shouldSkipSerializingField(T, field)) {
                             if (getFieldSerializer(T, field)) |serializer| {
                                 maybe_err = serializer(writer, @field(data, field.name), params);
                             } else {

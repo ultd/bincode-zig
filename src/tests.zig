@@ -169,3 +169,61 @@ test "skip a field" {
     try testing.expect(true == other_entity.c.d);
     try testing.expect(4.4 == other_entity.c.e);
 }
+
+const SelfSerializerStruct = struct {
+    some: u64,
+    value: u16,
+
+    pub const @"bincode-config" = bincode.StructConfig{
+        .serializer = serializeForSelfSerializeStruct,
+        .deserializer = deserializeForSelfSerializeStruct,
+    };
+};
+
+// our custome serializer for ipv4
+fn serializeForSelfSerializeStruct(writer: anytype, data: anytype, params: bincode.Params) !void {
+    var buf: [15]u8 = undefined;
+    var out = try std.fmt.bufPrint(&buf, "{}.{}", .{ data.some, data.balue });
+    return try bincode.write(writer, out, params);
+}
+
+// our custome deserializer for ipv4
+fn deserializeForSelfSerializeStruct(_: std.mem.Allocator, comptime T: type, reader: anytype, params: bincode.Params) !T {
+    var str = try bincode.read(testing.allocator, []const u8, reader, params);
+    defer bincode.readFree(testing.allocator, str);
+
+    var out: T = undefined;
+    var split = std.mem.split(u8, str, ".");
+
+    out.some = std.fmt.parseUnsigned(u64, split.next().?, 10) catch return error.InvalidFormat;
+    out.value = std.fmt.parseUnsigned(u16, split.next().?, 10) catch return error.InvalidFormat;
+
+    return out;
+}
+
+test "custom struct serialize" {
+    testing.log_level = .debug;
+
+    var entity = SelfSerializerStruct{
+        .some = 2356257257257,
+        .value = 23433,
+    };
+
+    std.log.debug("original {any}", .{entity});
+
+    var buf = std.ArrayList(u8).init(testing.allocator);
+    defer buf.deinit();
+
+    try bincode.write(buf.writer(), entity, bincode.Params.standard);
+
+    std.log.debug("serialized: {any}", .{buf.items});
+
+    var stream = std.io.fixedBufferStream(buf.items);
+    var other_entity = try bincode.read(testing.allocator, SelfSerializerStruct, stream.reader(), bincode.Params.standard);
+    defer bincode.readFree(testing.allocator, other_entity);
+
+    std.log.debug("deserialized: {any}", .{other_entity});
+
+    try testing.expect(entity.some == other_entity.some);
+    try testing.expect(entity.value == other_entity.value);
+}
