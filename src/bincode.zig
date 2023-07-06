@@ -421,7 +421,18 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
     switch (@typeInfo(T)) {
         .Type, .Void, .NoReturn, .Undefined, .Null, .Fn, .Opaque, .Frame, .AnyFrame => return,
         .Bool => return writer.writeByte(@boolToInt(data)),
-        .Enum => |info| return bincode.write(writer, if (@typeInfo(info.tag_type).Int.bits < 8) @as(u8, @enumToInt(data)) else @enumToInt(data), params),
+        .Enum => |info| { 
+            // return bincode.write(writer, if (@typeInfo(info.tag_type).Int.bits < 8) @as(u8, @enumToInt(data)) else @enumToInt(data), params);
+            switch (params.int_encoding) {
+                .variable => { 
+                    return bincode.write(writer, if (@typeInfo(info.tag_type).Int.bits < 8) @as(u8, @enumToInt(data)) else @enumToInt(data), params);
+                }, 
+                .fixed => { 
+                    // Enum discriminants are encoded as u32
+                    return try writer.writeIntLittle(u32, @enumToInt(data));
+                }
+            }
+        },
         .Union => |info| {
             try bincode.write(writer, @enumToInt(data), params);
             inline for (info.fields) |field| {
@@ -558,6 +569,20 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
     }
 
     @compileError("Serializing '" ++ @typeName(T) ++ "' is unsupported.");
+}
+
+test "bincode: fixed length enums" { 
+    const Foo = enum {
+        A, B
+    };
+
+    const expected = [_]u8 { 1, 0, 0, 0};
+    const value = Foo.B;
+
+    var buffer = [_]u8{ 0 } ** 10;
+    const buf = try bincode.writeToSlice(&buffer, value, bincode.Params.standard);
+
+    try testing.expectEqualSlices(u8, &expected, buf[0..buf.len]);
 }
 
 test "bincode: decode arbitrary object" {
