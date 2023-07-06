@@ -429,12 +429,20 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
                 }, 
                 .fixed => { 
                     // Enum discriminants are encoded as u32
-                    return try writer.writeIntLittle(u32, @enumToInt(data));
+                    return bincode.write(writer, @as(u32, @enumToInt(data)), params);
                 }
             }
         },
         .Union => |info| {
-            try bincode.write(writer, @enumToInt(data), params);
+            switch (params.int_encoding) {
+                .variable => { 
+                    try bincode.write(writer, @enumToInt(data), params);
+                }, 
+                .fixed => { 
+                    try bincode.write(writer, @as(u32, @enumToInt(data)), params);
+                }
+            }
+
             inline for (info.fields) |field| {
                 if (data == @field(T, field.name)) {
                     return bincode.write(writer, @field(data, field.name), params);
@@ -572,12 +580,15 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
 }
 
 test "bincode: fixed length enums" { 
-    const Foo = enum {
-        A, B
+    const Foo = union(enum(u8)) {
+        A: u32, 
+        B: u32
     };
 
-    const expected = [_]u8 { 1, 0, 0, 0};
-    const value = Foo.B;
+    const expected = [_]u8 { 1, 0, 0, 0, 1, 1, 1, 1};
+    const value = Foo {
+        .B = 16843009
+    };
 
     var buffer = [_]u8{ 0 } ** 10;
     const buf = try bincode.writeToSlice(&buffer, value, bincode.Params.standard);
