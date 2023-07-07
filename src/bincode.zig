@@ -180,6 +180,7 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
                 if (raw_tag == @field(tag_type, field.name)) {
                     // https://github.com/ziglang/zig/issues/7866
                     if (field.type == void) return @unionInit(U, field.name, {});
+
                     const payload = try bincode.read(gpa, field.type, reader, params);
                     return @unionInit(U, field.name, payload);
                 }
