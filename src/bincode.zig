@@ -604,142 +604,141 @@ test "bincode: fixed length enums" {
     try testing.expectEqualSlices(u8, &expected, buf[0..buf.len]);
 
     // read it back 
-    var value2: Foo = undefined;
-    _ = try bincode.readFromSlice(testing.allocator, Foo, &buffer, bincode.Params.standard);
+    const value2 = try bincode.readFromSlice(testing.allocator, Foo, &buffer, bincode.Params.standard);
     std.debug.print("{any} {any}\n", .{value, value2});
     try testing.expectEqual(value, value2);
 }
 
-// test "bincode: decode arbitrary object" {
-//     const Mint = struct {
-//         authority: bincode.Option([32]u8),
-//         supply: u64,
-//         decimals: u8,
-//         is_initialized: bool,
-//         freeze_authority: bincode.Option([32]u8),
-//     };
+test "bincode: decode arbitrary object" {
+    const Mint = struct {
+        authority: bincode.Option([32]u8),
+        supply: u64,
+        decimals: u8,
+        is_initialized: bool,
+        freeze_authority: bincode.Option([32]u8),
+    };
 
-//     const bytes = [_]u8{
-//         1,   0,   0,   0,   83,  18,  223, 14,  150, 112, 155, 39,  143, 181,
-//         58,  12,  16,  228, 56,  110, 253, 193, 149, 16,  253, 81,  214, 206,
-//         246, 126, 227, 182, 123, 225, 246, 203, 1,   0,   0,   0,   0,   0,
-//         0,   0,   0,   1,   1,   0,   0,   0,   0,   0,   0,   83,  18,  223,
-//         14,  150, 112, 155, 39,  143, 181, 58,  12,  16,  228, 56,  110, 253,
-//         193, 149, 16,  253, 81,  214, 206, 246, 126, 227, 182, 123,
-//     };
-//     const mint = try bincode.readFromSlice(testing.allocator, Mint, &bytes, .{});
-//     defer bincode.readFree(testing.allocator, mint);
+    const bytes = [_]u8{
+        1,   0,   0,   0,   83,  18,  223, 14,  150, 112, 155, 39,  143, 181,
+        58,  12,  16,  228, 56,  110, 253, 193, 149, 16,  253, 81,  214, 206,
+        246, 126, 227, 182, 123, 225, 246, 203, 1,   0,   0,   0,   0,   0,
+        0,   0,   0,   1,   1,   0,   0,   0,   0,   0,   0,   83,  18,  223,
+        14,  150, 112, 155, 39,  143, 181, 58,  12,  16,  228, 56,  110, 253,
+        193, 149, 16,  253, 81,  214, 206, 246, 126, 227, 182, 123,
+    };
+    const mint = try bincode.readFromSlice(testing.allocator, Mint, &bytes, .{});
+    defer bincode.readFree(testing.allocator, mint);
 
-//     try std.testing.expectEqual(@as(u64, 1), mint.supply);
-//     try std.testing.expectEqual(@as(u8, 0), mint.decimals);
-//     try std.testing.expectEqual(true, mint.is_initialized);
-//     try std.testing.expect(mint.authority == .some);
-//     try std.testing.expect(mint.freeze_authority == .some);
-// }
+    try std.testing.expectEqual(@as(u64, 1), mint.supply);
+    try std.testing.expectEqual(@as(u8, 0), mint.decimals);
+    try std.testing.expectEqual(true, mint.is_initialized);
+    try std.testing.expect(mint.authority == .some);
+    try std.testing.expect(mint.freeze_authority == .some);
+}
 
-// test "bincode: option serialize and deserialize" {
-//     const Mint = struct {
-//         authority: bincode.Option([32]u8),
-//         supply: u64,
-//         decimals: u8,
-//         is_initialized: bool,
-//         freeze_authority: bincode.Option([32]u8),
-//     };
+test "bincode: option serialize and deserialize" {
+    const Mint = struct {
+        authority: bincode.Option([32]u8),
+        supply: u64,
+        decimals: u8,
+        is_initialized: bool,
+        freeze_authority: bincode.Option([32]u8),
+    };
 
-//     var buffer = std.ArrayList(u8).init(testing.allocator);
-//     defer buffer.deinit();
+    var buffer = std.ArrayList(u8).init(testing.allocator);
+    defer buffer.deinit();
 
-//     const expected: Mint = .{
-//         .authority = bincode.Option([32]u8).from([_]u8{ 1, 2, 3, 4 } ** 8),
-//         .supply = 1,
-//         .decimals = 0,
-//         .is_initialized = true,
-//         .freeze_authority = bincode.Option([32]u8).from([_]u8{ 5, 6, 7, 8 } ** 8),
-//     };
+    const expected: Mint = .{
+        .authority = bincode.Option([32]u8).from([_]u8{ 1, 2, 3, 4 } ** 8),
+        .supply = 1,
+        .decimals = 0,
+        .is_initialized = true,
+        .freeze_authority = bincode.Option([32]u8).from([_]u8{ 5, 6, 7, 8 } ** 8),
+    };
 
-//     try bincode.write(buffer.writer(), expected, .{});
+    try bincode.write(buffer.writer(), expected, .{});
 
-//     try std.testing.expectEqual(@as(usize, 82), buffer.items.len);
+    try std.testing.expectEqual(@as(usize, 82), buffer.items.len);
 
-//     const actual = try bincode.readFromSlice(testing.allocator, Mint, buffer.items, .{});
-//     defer bincode.readFree(testing.allocator, actual);
+    const actual = try bincode.readFromSlice(testing.allocator, Mint, buffer.items, .{});
+    defer bincode.readFree(testing.allocator, actual);
 
-//     try std.testing.expectEqual(expected, actual);
-// }
+    try std.testing.expectEqual(expected, actual);
+}
 
-// test "bincode: serialize and deserialize" {
-//     var buffer = std.ArrayList(u8).init(testing.allocator);
-//     defer buffer.deinit();
+test "bincode: serialize and deserialize" {
+    var buffer = std.ArrayList(u8).init(testing.allocator);
+    defer buffer.deinit();
 
-//     inline for (.{ .{}, .{ .int_encoding = .variable }, bincode.Params.legacy, bincode.Params.standard }) |params| {
-//         inline for (.{
-//             @as(i8, std.math.minInt(i8)),
-//             @as(i16, std.math.minInt(i16)),
-//             @as(i32, std.math.minInt(i32)),
-//             @as(i64, std.math.minInt(i64)),
-//             @as(usize, std.math.minInt(usize)),
-//             @as(isize, std.math.minInt(isize)),
-//             @as(i8, std.math.maxInt(i8)),
-//             @as(i16, std.math.maxInt(i16)),
-//             @as(i32, std.math.maxInt(i32)),
-//             @as(i64, std.math.maxInt(i64)),
-//             @as(u8, std.math.maxInt(u8)),
-//             @as(u16, std.math.maxInt(u16)),
-//             @as(u32, std.math.maxInt(u32)),
-//             @as(u64, std.math.maxInt(u64)),
-//             @as(usize, std.math.maxInt(usize)),
-//             @as(isize, std.math.maxInt(isize)),
+    inline for (.{ .{}, .{ .int_encoding = .variable }, bincode.Params.legacy, bincode.Params.standard }) |params| {
+        inline for (.{
+            @as(i8, std.math.minInt(i8)),
+            @as(i16, std.math.minInt(i16)),
+            @as(i32, std.math.minInt(i32)),
+            @as(i64, std.math.minInt(i64)),
+            @as(usize, std.math.minInt(usize)),
+            @as(isize, std.math.minInt(isize)),
+            @as(i8, std.math.maxInt(i8)),
+            @as(i16, std.math.maxInt(i16)),
+            @as(i32, std.math.maxInt(i32)),
+            @as(i64, std.math.maxInt(i64)),
+            @as(u8, std.math.maxInt(u8)),
+            @as(u16, std.math.maxInt(u16)),
+            @as(u32, std.math.maxInt(u32)),
+            @as(u64, std.math.maxInt(u64)),
+            @as(usize, std.math.maxInt(usize)),
+            @as(isize, std.math.maxInt(isize)),
 
-//             @as(f32, std.math.f32_min),
-//             @as(f64, std.math.f64_min),
-//             @as(f32, std.math.f32_max),
-//             @as(f64, std.math.f64_max),
+            @as(f32, std.math.f32_min),
+            @as(f64, std.math.f64_min),
+            @as(f32, std.math.f32_max),
+            @as(f64, std.math.f64_max),
 
-//             [_]u8{ 0, 1, 2, 3 },
-//         }) |expected| {
-//             try bincode.write(buffer.writer(), expected, params);
+            [_]u8{ 0, 1, 2, 3 },
+        }) |expected| {
+            try bincode.write(buffer.writer(), expected, params);
 
-//             const actual = try bincode.readFromSlice(testing.allocator, @TypeOf(expected), buffer.items, params);
-//             defer bincode.readFree(testing.allocator, actual);
+            const actual = try bincode.readFromSlice(testing.allocator, @TypeOf(expected), buffer.items, params);
+            defer bincode.readFree(testing.allocator, actual);
 
-//             try testing.expectEqual(expected, actual);
-//             buffer.clearRetainingCapacity();
-//         }
-//     }
+            try testing.expectEqual(expected, actual);
+            buffer.clearRetainingCapacity();
+        }
+    }
 
-//     inline for (.{ .{}, bincode.Params.legacy, bincode.Params.standard }) |params| {
-//         inline for (.{
-//             "hello world",
-//             @as([]const u8, "hello world"),
-//         }) |expected| {
-//             try bincode.write(buffer.writer(), expected, params);
+    inline for (.{ .{}, bincode.Params.legacy, bincode.Params.standard }) |params| {
+        inline for (.{
+            "hello world",
+            @as([]const u8, "hello world"),
+        }) |expected| {
+            try bincode.write(buffer.writer(), expected, params);
 
-//             const actual = try bincode.readFromSlice(testing.allocator, @TypeOf(expected), buffer.items, params);
-//             defer bincode.readFree(testing.allocator, actual);
+            const actual = try bincode.readFromSlice(testing.allocator, @TypeOf(expected), buffer.items, params);
+            defer bincode.readFree(testing.allocator, actual);
 
-//             try testing.expectEqualSlices(std.meta.Elem(@TypeOf(expected)), expected, actual);
-//             buffer.clearRetainingCapacity();
-//         }
-//     }
-// }
+            try testing.expectEqualSlices(std.meta.Elem(@TypeOf(expected)), expected, actual);
+            buffer.clearRetainingCapacity();
+        }
+    }
+}
 
-// test "bincode: (legacy) serialize an array" {
-//     var buffer = std.ArrayList(u8).init(testing.allocator);
-//     defer buffer.deinit();
+test "bincode: (legacy) serialize an array" {
+    var buffer = std.ArrayList(u8).init(testing.allocator);
+    defer buffer.deinit();
 
-//     const Foo = struct {
-//         first: u8,
-//         second: u8,
-//     };
+    const Foo = struct {
+        first: u8,
+        second: u8,
+    };
 
-//     try bincode.write(buffer.writer(), [_]Foo{
-//         .{ .first = 10, .second = 20 },
-//         .{ .first = 30, .second = 40 },
-//     }, bincode.Params.legacy);
+    try bincode.write(buffer.writer(), [_]Foo{
+        .{ .first = 10, .second = 20 },
+        .{ .first = 30, .second = 40 },
+    }, bincode.Params.legacy);
 
-//     try testing.expectEqualSlices(u8, &[_]u8{
-//         2, 0, 0, 0, 0, 0, 0, 0, // Length of the array
-//         10, 20, // First Foo
-//         30, 40, // Second Foo
-//     }, buffer.items);
-// }
+    try testing.expectEqualSlices(u8, &[_]u8{
+        2, 0, 0, 0, 0, 0, 0, 0, // Length of the array
+        10, 20, // First Foo
+        30, 40, // Second Foo
+    }, buffer.items);
+}
