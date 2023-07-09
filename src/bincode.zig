@@ -443,6 +443,7 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
             }
         },
         .Union => |info| {
+            // try bincode.write(writer, @enumToInt(data), params);
             switch (params.int_encoding) {
                 .variable => { 
                     try bincode.write(writer, @enumToInt(data), params);
