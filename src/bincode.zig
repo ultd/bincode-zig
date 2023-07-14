@@ -126,7 +126,7 @@ pub fn Option(comptime T: type) type {
 pub fn sizeOf(data: anytype, params: bincode.Params) usize {
     var stream = std.io.countingWriter(std.io.null_writer);
     bincode.write(stream.writer(), data, params) catch unreachable;
-    return @intCast(usize, stream.bytes_written);
+    return @intCast(stream.bytes_written);
 }
 
 pub fn readFromSlice(gpa: std.mem.Allocator, comptime T: type, slice: []const u8, params: bincode.Params) !T {
@@ -189,7 +189,7 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
             inline for (info.fields) |field| {
                 if (!field.is_comptime) {
                     if (shouldUseDefaultValue(U, field)) |val| {
-                        @field(data, field.name) = @ptrCast(*const field.type, @alignCast(@alignOf(field.type), val)).*;
+                        @field(data, field.name) = @as(*const field.type, @ptrCast(@alignCast(val))).*;
                     } else if (getFieldDeserializer(U, field)) |deserializer| {
                         @field(data, field.name) = try deserializer(gpa, field.type, reader, params);
                     } else {
@@ -257,7 +257,7 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
                 @compileError("Only f{32, 64} floating-point integers may be serialized, but attempted to serialize " ++ @typeName(U) ++ ".");
             }
             const bytes = try reader.readBytesNoEof((info.bits + 7) / 8);
-            return @bitCast(U, bytes);
+            return @as(U, @bitCast(bytes));
         },
         .ComptimeInt => return bincode.read(gpa, u64, reader, params),
         .Int => |info| {
@@ -273,9 +273,9 @@ pub fn read(gpa: std.mem.Allocator, comptime T: type, reader: anytype, params: b
                             .unsigned => b,
                             .signed => zigzag: {
                                 if (b % 2 == 0) {
-                                    break :zigzag @intCast(U, b / 2);
+                                    break :zigzag @as(U, @intCast(b / 2));
                                 } else {
-                                    break :zigzag ~@bitCast(U, @as(std.meta.Int(.unsigned, info.bits), b / 2));
+                                    break :zigzag ~@as(U, @bitCast(@as(std.meta.Int(.unsigned, info.bits), b / 2)));
                                 }
                             },
                         };
@@ -420,10 +420,10 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
 
     switch (@typeInfo(T)) {
         .Type, .Void, .NoReturn, .Undefined, .Null, .Fn, .Opaque, .Frame, .AnyFrame => return,
-        .Bool => return writer.writeByte(@boolToInt(data)),
-        .Enum => |info| return bincode.write(writer, if (@typeInfo(info.tag_type).Int.bits < 8) @as(u8, @enumToInt(data)) else @enumToInt(data), params),
+        .Bool => return writer.writeByte(@intFromBool(data)),
+        .Enum => |info| return bincode.write(writer, if (@typeInfo(info.tag_type).Int.bits < 8) @as(u8, @intFromEnum(data)) else @intFromEnum(data), params),
         .Union => |info| {
-            try bincode.write(writer, @enumToInt(data), params);
+            try bincode.write(writer, @intFromEnum(data), params);
             inline for (info.fields) |field| {
                 if (data == @field(T, field.name)) {
                     return bincode.write(writer, @field(data, field.name), params);
@@ -507,44 +507,44 @@ pub fn write(writer: anytype, data: anytype, params: bincode.Params) !void {
                         .unsigned => data,
                         .signed => zigzag: {
                             if (data < 0) {
-                                break :zigzag ~@bitCast(std.meta.Int(.unsigned, info.bits), data) * 2 + 1;
+                                break :zigzag ~@as(std.meta.Int(.unsigned, info.bits), @bitCast(data)) * 2 + 1;
                             } else {
-                                break :zigzag @intCast(std.meta.Int(.unsigned, info.bits), data) * 2;
+                                break :zigzag @as(std.meta.Int(.unsigned, info.bits), @intCast(data)) * 2;
                             }
                         },
                     };
 
                     if (z < 251) {
-                        return writer.writeByte(@intCast(u8, z));
+                        return writer.writeByte(@as(u8, @intCast(z)));
                     } else if (z <= std.math.maxInt(u16)) {
                         try writer.writeByte(251);
                         return switch (params.endian) {
-                            .Little => writer.writeIntLittle(u16, @intCast(u16, z)),
-                            .Big => writer.writeIntBig(u16, @intCast(u16, z)),
+                            .Little => writer.writeIntLittle(u16, @as(u16, @intCast(z))),
+                            .Big => writer.writeIntBig(u16, @as(u16, @intCast(z))),
                         };
                     } else if (z <= std.math.maxInt(u32)) {
                         try writer.writeByte(252);
                         return switch (params.endian) {
-                            .Little => writer.writeIntLittle(u32, @intCast(u32, z)),
-                            .Big => writer.writeIntBig(u32, @intCast(u32, z)),
+                            .Little => writer.writeIntLittle(u32, @as(u32, @intCast(z))),
+                            .Big => writer.writeIntBig(u32, @as(u32, @intCast(z))),
                         };
                     } else if (z <= std.math.maxInt(u64)) {
                         try writer.writeByte(253);
                         return switch (params.endian) {
-                            .Little => writer.writeIntLittle(u64, @intCast(u64, z)),
-                            .Big => writer.writeIntBig(u64, @intCast(u64, z)),
+                            .Little => writer.writeIntLittle(u64, @as(u64, @intCast(z))),
+                            .Big => writer.writeIntBig(u64, @as(u64, @intCast(z))),
                         };
                     } else if (z <= std.math.maxInt(u128)) {
                         try writer.writeByte(254);
                         return switch (params.endian) {
-                            .Little => writer.writeIntLittle(u128, @intCast(u128, z)),
-                            .Big => writer.writeIntBig(u128, @intCast(u128, z)),
+                            .Little => writer.writeIntLittle(u128, @as(u128, @intCast(z))),
+                            .Big => writer.writeIntBig(u128, @as(u128, @intCast(z))),
                         };
                     } else {
                         try writer.writeByte(255);
                         return switch (params.endian) {
-                            .Little => writer.writeIntLittle(u256, @intCast(u256, z)),
-                            .Big => writer.writeIntBig(u256, @intCast(u256, z)),
+                            .Little => writer.writeIntLittle(u256, @as(u256, @intCast(z))),
+                            .Big => writer.writeIntBig(u256, @as(u256, @intCast(z))),
                         };
                     }
                 },
@@ -640,10 +640,10 @@ test "bincode: serialize and deserialize" {
             @as(usize, std.math.maxInt(usize)),
             @as(isize, std.math.maxInt(isize)),
 
-            @as(f32, std.math.f32_min),
-            @as(f64, std.math.f64_min),
-            @as(f32, std.math.f32_max),
-            @as(f64, std.math.f64_max),
+            @as(f32, std.math.floatMin(f32)),
+            @as(f64, std.math.floatMin(f64)),
+            @as(f32, std.math.floatMax(f32)),
+            @as(f64, std.math.floatMax(f64)),
 
             [_]u8{ 0, 1, 2, 3 },
         }) |expected| {
