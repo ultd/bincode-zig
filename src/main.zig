@@ -39,9 +39,6 @@ pub const BitVec = struct {
 pub fn main() !void { 
     const alloc = std.heap.c_allocator;
 
-    // [1] = Some()
-    // [2,   0,   0,   0] = 
-
     var rust_bit_vec_serialized = [_]u8{
         1,   2,   0,   0,   0,   0,   0, 0, 0, 255, 255, 239, 191, 255, 255, 255, 255, 255, 255, 255,
         255, 255, 255, 255, 255, 128, 0, 0, 0, 0,   0,   0,   0,
